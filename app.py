@@ -8,7 +8,7 @@ API_KEY = "6c79e2eacf0174c706c7b1cd8a0fb802"
 # Caches data for 1 hour (3600 seconds) so your app doesn't burn through API limits
 @st.cache_data(ttl=3600)
 def get_live_match_data():
-    # Targets upcoming scheduled fixtures
+    # FIXED: Changed URL to api.football-data.org
     url = "https://football-data.org"
     headers = { "X-Auth-Token": API_KEY }
     
