@@ -3,8 +3,8 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-st.set_page_config(layout="wide", page_title="Elite Football Analytics Hub")
-st.title("⚽ Elite Football Analytics & Predictive Hub")
+st.set_page_config(layout="wide", page_title="Live Elite Football Hub")
+st.title("⚽ Live Automated Football Analytics & Predictive Hub")
 
 def poisson_prob(lmbda, k):
     if lmbda <= 0: return 0.0
@@ -14,7 +14,6 @@ def poisson_prob(lmbda, k):
 def calculate_league_table(df, predict_home=None, predict_away=None, ph_goals=0, pa_goals=0):
     working_df = df.copy()
     
-    # Inject predicted match data if toggle is active
     if predict_home and predict_away:
         new_row = pd.DataFrame([{
             'HomeTeam': predict_home, 'AwayTeam': predict_away,
@@ -72,16 +71,23 @@ def calculate_league_table(df, predict_home=None, predict_away=None, ph_goals=0,
     return table[['Team', 'Played', 'Won', 'Drawn', 'Lost', 'GF', 'GA', 'GD', 'Points', 'Form (Last 5)']]
 
 
-st.subheader("Step 1: Upload Your Extracted Data")
-uploaded_file = st.file_uploader("Drag and drop your Football-Data.co.uk CSV file here", type=["csv"])
+# --- LIVE AUTOMATED DATA SYNC OVER THE WEB ---
+# We point to the 2627 season folder for the 2026/2027 live Premier League dataset
+live_data_url = "https://football-data.co.uk"
 
-if uploaded_file is not None:
-    df = pd.read_csv(uploaded_file)
-    st.success("Core Data Infrastructure Loaded Successfully!")
+@st.cache_data(ttl=3600)  # Caches the data for 1 hour so the site loads incredibly fast
+def load_live_data(url):
+    return pd.read_csv(url)
+
+try:
+    with st.spinner("🔄 Establishing cloud connection and downloading live league stats..."):
+        df = load_live_data(live_data_url)
+    st.success("🟢 Live Cloud Data Synchronized Automatically!")
     
     required_cols = ["HomeTeam", "AwayTeam", "FTHG", "FTAG", "FTR", "HS", "AS", "HST", "AST"]
     if all(col in df.columns for col in required_cols):
         teams_list = sorted(df['HomeTeam'].dropna().unique().tolist())
+        
         tab1, tab2 = st.tabs(["🎯 Match Forecast Simulation Engine", "📊 Live Standings & Form Matrix Dashboard"])
         
         with tab1:
@@ -133,12 +139,12 @@ if uploaded_file is not None:
                 st.table(outcomes_df)
                 
                 max_idx = np.unravel_index(np.argmax(grid), grid.shape)
-                st.info(f"✨ **Most Likely Exact Scoreline**: {selected_home} {max_idx[0]} - {max_idx[1]} ({grid[max_idx]*100:.1f}% probability)")
+                st.info(f"✨ **Most Likely Exact Scoreline**: {selected_home} {max_idx} - {max_idx} ({grid[max_idx]*100:.1f}% probability)")
                 
                 under_2_5_mask = np.fromfunction(lambda i, j: (i + j) < 2.5, (max_goals, max_goals))
                 under_2_5_prob = float(np.sum(grid[under_2_5_mask]))
                 over_2_5_prob = (1.0 - under_2_5_prob) * 100
-                btts_no_prob = float(np.sum(grid[:, 0]) + np.sum(grid[0, :]) - grid[0, 0])
+                btts_no_prob = float(np.sum(grid[:, 0]) + np.sum(grid[0, :]) - grid)
                 btts_yes_prob = (1.0 - btts_no_prob) * 100
                 
                 st.subheader("🎲 Embedded Derivative Value Betting Parameters")
@@ -147,12 +153,11 @@ if uploaded_file is not None:
                 b2.metric("Both Teams to Score (BTTS Yes)", f"{btts_yes_prob:.1f}%")
                 
                 st.subheader("🔢 Poisson Scoreline Distribution Matrix")
-                # Removed .style rendering to eliminate Jinja2 requirements entirely
                 matrix_df = pd.DataFrame(grid * 100, columns=[f"Away {g}" for g in range(max_goals)], index=[f"Home {g}" for g in range(max_goals)])
                 st.dataframe(matrix_df, use_container_width=True)
                 
-                st.session_state['ph_goals'] = int(max_idx[0])
-                st.session_state['pa_goals'] = int(max_idx[1])
+                st.session_state['ph_goals'] = int(max_idx)
+                st.session_state['pa_goals'] = int(max_idx)
                 st.session_state['p_home'] = selected_home
                 st.session_state['p_away'] = selected_away
         
@@ -168,6 +173,6 @@ if uploaded_file is not None:
                 
             st.dataframe(current_table, use_container_width=True, height=600)
     else:
-        st.error("Error: CSV does not match formatting fields.")
-else:
-    st.info("💡 Drop your E0.csv data source file right here to initialize your analytics workspace ecosystem.")
+        st.error("Error: Live CSV format structures changed on server endpoints.")
+except Exception as e:
+    st.error(f"Failed to fetch live web data stream: {e}")
