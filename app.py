@@ -16,12 +16,12 @@ def calculate_league_table(df, predict_home=None, predict_away=None, ph_goals=0,
     
     # Inject predicted match data if toggle is active
     if predict_home and predict_away:
-      new_row = pd.DataFrame([{
-          'HomeTeam': predict_home, 'AwayTeam': predict_away,
-          'FTHG': ph_goals, 'FTAG': pa_goals,
-          'FTR': 'H' if ph_goals > pa_goals else ('A' if pa_goals > ph_goals else 'D')
-      }])
-      working_df = pd.concat([working_df, new_row], ignore_index=True)
+        new_row = pd.DataFrame([{
+            'HomeTeam': predict_home, 'AwayTeam': predict_away,
+            'FTHG': int(ph_goals), 'FTAG': int(pa_goals),
+            'FTR': 'H' if ph_goals > pa_goals else ('A' if pa_goals > ph_goals else 'D')
+        }])
+        working_df = pd.concat([working_df, new_row], ignore_index=True)
 
     h_group = working_df.groupby('HomeTeam')
     home_stats = pd.DataFrame({
@@ -59,17 +59,17 @@ def calculate_league_table(df, predict_home=None, predict_away=None, ph_goals=0,
         t_matches = working_df[(working_df['HomeTeam'] == team) | (working_df['AwayTeam'] == team)].tail(5)
         form_list = []
         for _, r in t_matches.iterrows():
-          if r['HomeTeam'] == team:
-            res = '🟢 W' if r['FTR'] == 'H' else ('🟡 D' if r['FTR'] == 'D' else '🔴 L')
-          else:
-            res = '🟢 W' if r['FTR'] == 'A' else ('🟡 D' if r['FTR'] == 'D' else '🔴 L')
-          form_list.append(res)
-        return " | ".join(form_list)
+            if r['HomeTeam'] == team:
+                res = 'W' if r['FTR'] == 'H' else ('D' if r['FTR'] == 'D' else 'L')
+            else:
+                res = 'W' if r['FTR'] == 'A' else ('D' if r['FTR'] == 'D' else 'L')
+            form_list.append(res)
+        return " - ".join(form_list)
 
-    table['Recent Form (Last 5)'] = table['Team'].apply(extract_form_string)
+    table['Form (Last 5)'] = table['Team'].apply(extract_form_string)
     table = table.sort_values(by=['Points', 'GD', 'GF', 'Team'], ascending=[False, False, False, True]).reset_index(drop=True)
     table.index += 1
-    return table[['Team', 'Played', 'Won', 'Drawn', 'Lost', 'GF', 'GA', 'GD', 'Points', 'Recent Form (Last 5)']]
+    return table[['Team', 'Played', 'Won', 'Drawn', 'Lost', 'GF', 'GA', 'GD', 'Points', 'Form (Last 5)']]
 
 
 st.subheader("Step 1: Upload Your Extracted Data")
@@ -138,7 +138,7 @@ if uploaded_file is not None:
                 under_2_5_mask = np.fromfunction(lambda i, j: (i + j) < 2.5, (max_goals, max_goals))
                 under_2_5_prob = float(np.sum(grid[under_2_5_mask]))
                 over_2_5_prob = (1.0 - under_2_5_prob) * 100
-                btts_no_prob = float(np.sum(grid[:, 0]) + np.sum(grid[0, :]) - grid[0,0])
+                btts_no_prob = float(np.sum(grid[:, 0]) + np.sum(grid[0, :]) - grid[0, 0])
                 btts_yes_prob = (1.0 - btts_no_prob) * 100
                 
                 st.subheader("🎲 Embedded Derivative Value Betting Parameters")
@@ -146,12 +146,13 @@ if uploaded_file is not None:
                 b1.metric("Over 2.5 Total Goals Probability", f"{over_2_5_prob:.1f}%")
                 b2.metric("Both Teams to Score (BTTS Yes)", f"{btts_yes_prob:.1f}%")
                 
-                st.subheader("🔢 Poisson Scoreline Distribution Array View")
-                matrix_df = pd.DataFrame(grid * 100, columns=[f"{selected_away} {g}" for g in range(max_goals)], index=[f"{selected_home} {g}" for g in range(max_goals)])
-                st.dataframe(matrix_df.style.background_gradient(cmap="Blues").format("{:.2f}%"))
+                st.subheader("🔢 Poisson Scoreline Distribution Matrix")
+                # Removed .style rendering to eliminate Jinja2 requirements entirely
+                matrix_df = pd.DataFrame(grid * 100, columns=[f"Away {g}" for g in range(max_goals)], index=[f"Home {g}" for g in range(max_goals)])
+                st.dataframe(matrix_df, use_container_width=True)
                 
-                st.session_state['ph_goals'] = max_idx[0]
-                st.session_state['pa_goals'] = max_idx[1]
+                st.session_state['ph_goals'] = int(max_idx[0])
+                st.session_state['pa_goals'] = int(max_idx[1])
                 st.session_state['p_home'] = selected_home
                 st.session_state['p_away'] = selected_away
         
