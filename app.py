@@ -1,43 +1,45 @@
-import pandas as pd
 import streamlit as st
+import pandas as pd
+import requests
 
-st.title("Football Match Predictor")
-st.write("Upload your match data CSV to generate simple form-based predictions.")
+# Set your API Key
+API_KEY = "6c79e2eacf0174c706c7b1cd8a0fb802"
 
-# File uploader for extracted data
-uploaded_file = st.file_uploader("Choose a CSV file", type="and", accept_multiple_files=False)
+# Caches data for 1 hour (3600 seconds) so your app doesn't burn through API limits
+@st.cache_data(ttl=3600)
+def get_live_match_data():
+    # Targets upcoming scheduled fixtures
+    url = "https://football-data.org"
+    headers = { "X-Auth-Token": API_KEY }
+    
+    try:
+        response = requests.get(url, headers=headers)
+        response.raise_for_status() # Raises an error for bad response codes
+        data = response.json()
+        
+        extracted_matches = []
+        for match in data.get('matches', []):
+            match_info = {
+                "HomeTeam": match['homeTeam']['name'],
+                "AwayTeam": match['awayTeam']['name'],
+                "HomeGoalsLast5": 10,  # Placeholder: Replace with your calculation logic
+                "AwayGoalsLast5": 5    # Placeholder: Replace with your calculation logic
+            }
+            extracted_matches.append(match_info)
+            
+        return pd.DataFrame(extracted_matches)
+        
+    except requests.exceptions.RequestException as e:
+        st.error(f"Error fetching live data: {e}")
+        # Returns an empty DataFrame with your expected columns as a fallback
+        return pd.DataFrame(columns=["HomeTeam", "AwayTeam", "HomeGoalsLast5", "AwayGoalsLast5"])
 
-# Fallback sample data if no file uploaded
-if uploaded_file is not None:
-  df = pd.read_csv(uploaded_file)
-else:
-  st.info("Using sample data. Upload your custom CSV to override.")
-  data = {
-      "HomeTeam": ["Arsenal", "Chelsea", "Liverpool", "Man City"],
-      "AwayTeam": ["Everton", "Fulham", "Wolves", "Burnley"],
-      "HomeGoalsLast5": [10, 7, 12, 13],
-      "AwayGoalsLast5": [5, 6, 4, 3],
-  }
-  df = pd.DataFrame(data)
+# Replace your st.file_uploader logic with this automated call
+df = get_live_match_data()
 
+# Display your preview section exactly like your original screenshot
 st.subheader("Extracted Data Preview")
-st.dataframe(df)
-
-
-# Simple prediction logic based on recent goals
-def predict_match(row):
-  diff = row["HomeGoalsLast5"] - row["AwayGoalsLast5"]
-  if diff > 3:
-    return "Home Win (High Confidence)"
-  elif diff > 0:
-    return "Home Win (Slight Edge)"
-  elif diff == 0:
-    return "Draw Expected"
-  else:
-    return "Away Win"
-
-
-if not df.empty and "HomeGoalsLast5" in df.columns and "AwayGoalsLast5" in df.columns:
-  df["Prediction"] = df.apply(predict_match, axis=1)
-  st.subheader("Generated Predictions")
-  st.dataframe(df[["HomeTeam", "AwayTeam", "Prediction"]])
+if not df.empty:
+    st.dataframe(df)
+else:
+    st.info("No active or upcoming matches found at the moment.")
