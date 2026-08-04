@@ -3,23 +3,38 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 import requests
+import io
 
-st.set_page_config(layout="wide", page_title="Live Elite Football Hub")
-st.title("⚽ Live Automated Football Analytics & Value Hub")
+st.set_page_config(layout="wide", page_title="Global Live Football Analytics Hub")
+st.title("⚽ Global Live Multi-League Analytics & Value Hub")
 
-# 🔴 API Key integrated natively into the source code pipeline
+# Global Fixed API Key Pipeline
 ODDS_API_KEY = "6c79e2eacf0174c706c7b1cd8a0fb802"
 
 def poisson_prob(lmbda, k):
     if lmbda <= 0: return 0.0
     return (math.exp(-lmbda) * (lmbda**k)) / math.factorial(k)
 
+# --- 10-League Configuration System Mapping Matrix ---
+LEAGUES_CONFIG = {
+    "Premier League (England)": {"code": "E0", "odds_code": "soccer_epl"},
+    "English Championship (England)": {"code": "E1", "odds_code": "soccer_efl_championship"},
+    "La Liga (Spain)": {"code": "SP1", "odds_code": "soccer_spain_la_liga"},
+    "Serie A (Italy)": {"code": "I1", "odds_code": "soccer_italy_serie_a"},
+    "Bundesliga (Germany)": {"code": "D1", "odds_code": "soccer_germany_bundesliga"},
+    "Ligue 1 (France)": {"code": "F1", "odds_code": "soccer_france_ligue_one"},
+    "Primeira Liga (Portugal)": {"code": "P1", "odds_code": "soccer_portugal_primeira_liga"},
+    "Belgian Pro League (Belgium)": {"code": "B1", "odds_code": "soccer_belgium_first_division_a"},
+    "Brasileirão (Brazil)": {"code": "MOCK_BR", "odds_code": "soccer_brazil_campeonato"},
+    "MLS (USA/Canada)": {"code": "MOCK_MLS", "odds_code": "soccer_usa_mls"}
+}
+
 # --- Automated Live Market Odds Fetcher ---
-def fetch_live_market_odds(api_key):
-    if not api_key:
+def fetch_live_market_odds(api_key, league_odds_code):
+    if not api_key or "MOCK" in league_odds_code:
         return {}
     try:
-        url = f"https://the-odds-api.com{api_key}&regions=uk&markets=h2h&oddsFormat=decimal"
+        url = f"https://the-odds-api.com{league_odds_code}/odds/?apiKey={api_key}&regions=uk&markets=h2h&oddsFormat=decimal"
         response = requests.get(url, timeout=5).json()
         odds_dict = {}
         for match in response:
@@ -27,6 +42,7 @@ def fetch_live_market_odds(api_key):
             away = match.get('away_team')
             bookmakers = match.get('bookmakers', [])
             if bookmakers:
+                # Use first active bookmaker parameters
                 markets = bookmakers[0].get('markets', [])
                 if markets:
                     outcomes = markets[0].get('outcomes', [])
@@ -99,51 +115,71 @@ def calculate_league_table(df, predict_home=None, predict_away=None, ph_goals=0,
     table.index += 1
     return table[['Team', 'Played', 'Won', 'Drawn', 'Lost', 'GF', 'GA', 'GD', 'Points', 'Form (Last 5)']]
 
-# --- Local Standby Backup Sandbox Generator ---
-def generate_sandboxed_backup_data():
-    teams = ['Arsenal', 'Aston Villa', 'Chelsea', 'Liverpool', 'Man City', 'Man United', 'Newcastle', 'Tottenham']
+# --- Local Standby Backup Sandbox Generator for Americas Leagues ---
+def generate_mock_league_data(league_name):
+    if "Brazil" in league_name:
+        teams = ['Flamego', 'Palmeiras', 'Botafogo', 'Fluminense', 'Gremio', 'Sao Paulo', 'Santos', 'Corinthians']
+    else:
+        teams = ['LA Galaxy', 'Inter Miami', 'LAFC', 'Columbus Crew', 'NY Red Bulls', 'FC Cincinnati', 'Seattle Sounders', 'Atlanta United']
     data = []
-    # Seed standard mock historical entries so engines process cleanly
     for i in range(len(teams)):
         for j in range(len(teams)):
             if i != j:
-                data.append({'HomeTeam': teams[i], 'AwayTeam': teams[j], 'FTHG': 2, 'FTAG': 1, 'FTR': 'H', 'HS': 14, 'AS': 9, 'HST': 6, 'AST': 3})
+                data.append({'HomeTeam': teams[i], 'AwayTeam': teams[j], 'FTHG': 2, 'FTAG': 1, 'FTR': 'H', 'HS': 12, 'AS': 8, 'HST': 5, 'AST': 3})
     return pd.DataFrame(data)
 
 @st.cache_data(ttl=3600)
-def load_safely_from_web():
-    # Attempt URL A
+def load_league_data_safely(league_name, config):
+    if "MOCK" in config["code"]:
+        return generate_mock_league_data(league_name), "Local Automated Simulation Layer"
+        
+    headers = {"User-Agent": "Mozilla/5.0"}
+    # 25/26 season evaluation targets
+    url = f"https://football-data.co.uk{config['code']}.csv"
     try:
-        url_a = "https://football-data.co.uk"
-        test_df = pd.read_csv(url_a, nrows=10)
-        if not test_df.empty and "HomeTeam" in test_df.columns and len(test_df.columns) > 5:
-            return pd.read_csv(url_a), "Live Web Data Stream (2025/2026)"
+        response = requests.get(url, headers=headers, timeout=10)
+        if response.status_code == 200 and "HomeTeam" in response.text:
+            csv_data = io.StringIO(response.text)
+            return pd.read_csv(csv_data), f"Live Cloud Stream via Football-Data ({config['code']})"
     except Exception:
         pass
         
-    # Attempt URL B Fallback
+    # Archive 24/25 safety loop fallback
+    url_fallback = f"https://football-data.co.uk{config['code']}.csv"
     try:
-        url_b = "https://football-data.co.uk"
-        test_df = pd.read_csv(url_b, nrows=10)
-        if not test_df.empty and "HomeTeam" in test_df.columns and len(test_df.columns) > 5:
-            return pd.read_csv(url_b), "Archive Web Data Stream (2024/2025)"
+        response = requests.get(url_fallback, headers=headers, timeout=10)
+        if response.status_code == 200 and "HomeTeam" in response.text:
+            csv_data = io.StringIO(response.text)
+            return pd.read_csv(csv_data), f"Archive Cloud Stream via Football-Data ({config['code']})"
     except Exception:
         pass
-        
-    return generate_sandboxed_backup_data(), "Standby Local Sandbox Environment (Offline Mode)"
 
-# --- EXECUTION CONTROL CONTROLLER ---
+    # Generic failsafe wrapper array mapping
+    teams = ["Team Alpha", "Team Beta", "Team Gamma", "Team Delta"]
+    d = []
+    for i in range(4):
+        for j in range(4):
+            if i != j: d.append({'HomeTeam': teams[i], 'AwayTeam': teams[j], 'FTHG': 1, 'FTAG': 1, 'FTR': 'D'})
+    return pd.DataFrame(d), "Generic System Failsafe Layer"
+
+
+# --- DYNAMIC TARGET LEAGUE UI CHOOSER SELECTION ---
+selected_league_label = st.selectbox("🌐 Select Target Football Tournament", list(LEAGUES_CONFIG.keys()))
+active_config = LEAGUES_CONFIG[selected_league_label]
+
+# --- CONTROLLER PIPELINE ROUTING ---
+df = None
 try:
-    with st.spinner("🔄 Synchronizing global data channels safely over the cloud..."):
-        df, source_label = load_safely_from_web()
-        live_odds_book = fetch_live_market_odds(ODDS_API_KEY)
-    st.success(f"🟢 Active Channel Connected: {source_label}")
+    with st.spinner(f"🔄 Establishing secure connection and downloading stats for {selected_league_label}..."):
+        df, source_label = load_league_data_safely(selected_league_label, active_config)
+        live_odds_book = fetch_live_market_odds(ODDS_API_KEY, active_config["odds_code"])
+    st.success(f"🟢 Synchronized: Using {source_label}")
 except Exception as e:
-    df, source_label = generate_sandboxed_backup_data(), "Emergency Backup Sandbox Environment (Offline Mode)"
+    df, source_label = generate_mock_league_data(selected_league_label), "Emergency Failsafe Offline Layer"
     live_odds_book = {}
-    st.warning(f"⚠️ App running in offline sandbox environment mode. Details: {e}")
+    st.error(f"Data stream communication break: {e}")
 
-if df is not None:
+if df is not None and not df.empty:
     teams_list = sorted(df['HomeTeam'].dropna().unique().tolist())
     tab1, tab2 = st.tabs(["🎯 Match Forecast Simulation Engine", "📊 Live Standings & Form Matrix Dashboard"])
     
@@ -168,37 +204,3 @@ if df is not None:
         st.sidebar.header("🛠️ Situational Modifiers Engine")
         home_xg_mod = st.sidebar.slider(f"{selected_home} xG Multiplier", 0.5, 2.0, 1.0, 0.05)
         away_xg_mod = st.sidebar.slider(f"{selected_away} xG Multiplier", 0.5, 2.0, 1.0, 0.05)
-        home_injuries = st.sidebar.selectbox(f"{selected_home} Key Absences", ["No Key Absences", "Minor Squad Absences", "Severe Absences"])
-        away_injuries = st.sidebar.selectbox(f"{selected_away} Key Absences", ["No Key Absences", "Minor Squad Absences", "Severe Absences"])
-        
-        injury_map = {"No Key Absences": 1.0, "Minor Squad Absences": 0.92, "Severe Absences": 0.80}
-        home_modifier = home_xg_mod * injury_map[home_injuries]
-        away_modifier = away_xg_mod * injury_map[away_injuries]
-        
-        home_exp_goals = max(0.1, (h_sc / avg_h_sc) * (a_co / avg_a_sc) * avg_h_sc * home_modifier)
-        away_exp_goals = max(0.1, (a_sc / avg_a_sc) * (h_co / avg_h_sc) * avg_a_sc * away_modifier)
-        
-        if st.button("Run Simulation Engine", type="primary"):
-            max_goals = 6
-            h_p = np.array([poisson_prob(home_exp_goals, i) for i in range(max_goals)])
-            a_p = np.array([poisson_prob(away_exp_goals, j) for j in range(max_goals)])
-            grid = np.outer(h_p, a_p)
-            
-            home_win_p = float(np.sum(np.tril(grid, -1))) * 100
-            draw_p = float(np.sum(np.diag(grid))) * 100
-            away_win_p = float(np.sum(np.triu(grid, 1))) * 100
-            
-            st.success(f"🎯 Expected Projected Goals: {selected_home} {home_exp_goals:.2f} vs {selected_away} {away_exp_goals:.2f}")
-            
-            outcomes_df = pd.DataFrame({
-                "Match Outcome": [f"Home Win ({selected_home})", "Draw Match", f"Away Win ({selected_away})"],
-                "Probability (%)": [f"{home_win_p:.1f}%", f"{draw_p:.1f}%", f"{away_win_p:.1f}%"]
-            })
-            st.table(outcomes_df)
-            
-            max_idx = np.unravel_index(np.argmax(grid), grid.shape)
-            st.info(f"✨ **Most Likely Exact Scoreline**: {selected_home} {max_idx[0]} - {max_idx[1]} ({grid[max_idx]*100:.1f}% probability)")
-            
-            under_2_5_mask = np.fromfunction(lambda i, j: (i + j) < 2.5, (max_goals, max_goals))
-            under_2_5_prob = float(np.sum(grid[under_2_5_mask]))
-            over_2_5_prob = (1.0 - under_2_5_prob) * 100
