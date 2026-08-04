@@ -17,16 +17,16 @@ def poisson_prob(lmbda, k):
 
 # --- 10-League Configuration System Mapping Matrix ---
 LEAGUES_CONFIG = {
-    "Premier League (England)": {"code": "E0", "odds_code": "soccer_epl"},
-    "English Championship (England)": {"code": "E1", "odds_code": "soccer_efl_championship"},
-    "La Liga (Spain)": {"code": "SP1", "odds_code": "soccer_spain_la_liga"},
-    "Serie A (Italy)": {"code": "I1", "odds_code": "soccer_italy_serie_a"},
-    "Bundesliga (Germany)": {"code": "D1", "odds_code": "soccer_germany_bundesliga"},
-    "Ligue 1 (France)": {"code": "F1", "odds_code": "soccer_france_ligue_one"},
-    "Primeira Liga (Portugal)": {"code": "P1", "odds_code": "soccer_portugal_primeira_liga"},
-    "Belgian Pro League (Belgium)": {"code": "B1", "odds_code": "soccer_belgium_first_division_a"},
-    "Brasileirão (Brazil)": {"code": "MOCK_BR", "odds_code": "soccer_brazil_campeonato"},
-    "MLS (USA/Canada)": {"code": "MOCK_MLS", "odds_code": "soccer_usa_mls"}
+    "Premier League (England)": {"code": "E0", "odds_code": "soccer_epl", "country": "england"},
+    "English Championship (England)": {"code": "E1", "odds_code": "soccer_efl_championship", "country": "england"},
+    "La Liga (Spain)": {"code": "SP1", "odds_code": "soccer_spain_la_liga", "country": "spain"},
+    "Serie A (Italy)": {"code": "I1", "odds_code": "soccer_italy_serie_a", "country": "italy"},
+    "Bundesliga (Germany)": {"code": "D1", "odds_code": "soccer_germany_bundesliga", "country": "germany"},
+    "Ligue 1 (France)": {"code": "F1", "odds_code": "soccer_france_ligue_one", "country": "france"},
+    "Primeira Liga (Portugal)": {"code": "P1", "odds_code": "soccer_portugal_primeira_liga", "country": "portugal"},
+    "Belgian Pro League (Belgium)": {"code": "B1", "odds_code": "soccer_belgium_first_division_a", "country": "belgium"},
+    "Brasileirão (Brazil)": {"code": "MOCK_BR", "odds_code": "soccer_brazil_campeonato", "country": "brazil"},
+    "MLS (USA/Canada)": {"code": "MOCK_MLS", "odds_code": "soccer_usa_mls", "country": "usa"}
 }
 
 # --- Automated Live Market Odds Fetcher ---
@@ -41,10 +41,9 @@ def fetch_live_market_odds(api_key, league_odds_code):
             home = match.get('home_team')
             away = match.get('away_team')
             bookmakers = match.get('bookmakers', [])
-            if bookmakers:
-                # Use first active bookmaker parameters
+            if bookmakers and len(bookmakers) > 0:
                 markets = bookmakers[0].get('markets', [])
-                if markets:
+                if markets and len(markets) > 0:
                     outcomes = markets[0].get('outcomes', [])
                     h_odds, d_odds, a_odds = 1.85, 3.40, 4.20
                     for outcome in outcomes:
@@ -118,9 +117,9 @@ def calculate_league_table(df, predict_home=None, predict_away=None, ph_goals=0,
 # --- Local Standby Backup Sandbox Generator for Americas Leagues ---
 def generate_mock_league_data(league_name):
     if "Brazil" in league_name:
-        teams = ['Flamego', 'Palmeiras', 'Botafogo', 'Fluminense', 'Gremio', 'Sao Paulo', 'Santos', 'Corinthians']
+        teams = ['Flamengo', 'Palmeiras', 'Botafogo', 'Fluminense', 'Gremio', 'Sao Paulo', 'Santos', 'Corinthians', 'Atletico MG', 'Cruzeiro', 'Internacional', 'Athletico PR']
     else:
-        teams = ['LA Galaxy', 'Inter Miami', 'LAFC', 'Columbus Crew', 'NY Red Bulls', 'FC Cincinnati', 'Seattle Sounders', 'Atlanta United']
+        teams = ['LA Galaxy', 'Inter Miami', 'LAFC', 'Columbus Crew', 'NY Red Bulls', 'FC Cincinnati', 'Seattle Sounders', 'Atlanta United', 'Austin FC', 'Charlotte FC', 'Chicago Fire', 'Colorado Rapids']
     data = []
     for i in range(len(teams)):
         for j in range(len(teams)):
@@ -133,35 +132,37 @@ def load_league_data_safely(league_name, config):
     if "MOCK" in config["code"]:
         return generate_mock_league_data(league_name), "Local Automated Simulation Layer"
         
-    headers = {"User-Agent": "Mozilla/5.0"}
-    # 25/26 season evaluation targets
-    url = f"https://football-data.co.uk{config['code']}.csv"
+    # High-Availability Cloud Mirror Stream (Bypasses website blocks)
+    mirror_url = f"https://githubusercontent.com{config['country']}/{config['code']}.csv"
     try:
-        response = requests.get(url, headers=headers, timeout=10)
+        response = requests.get(mirror_url, timeout=10)
         if response.status_code == 200 and "HomeTeam" in response.text:
             csv_data = io.StringIO(response.text)
-            return pd.read_csv(csv_data), f"Live Cloud Stream via Football-Data ({config['code']})"
+            return pd.read_csv(csv_data), f"Live High-Availability Cloud Stream ({config['code']})"
     except Exception:
         pass
         
-    # Archive 24/25 safety loop fallback
-    url_fallback = f"https://football-data.co.uk{config['code']}.csv"
+    # Direct Fallback Loop
+    headers = {"User-Agent": "Mozilla/5.0"}
+    fallback_url = f"https://football-data.co.uk{config['code']}.csv"
     try:
-        response = requests.get(url_fallback, headers=headers, timeout=10)
+        response = requests.get(fallback_url, headers=headers, timeout=10)
         if response.status_code == 200 and "HomeTeam" in response.text:
             csv_data = io.StringIO(response.text)
-            return pd.read_csv(csv_data), f"Archive Cloud Stream via Football-Data ({config['code']})"
+            return pd.read_csv(csv_data), f"Backup Archive Stream ({config['code']})"
     except Exception:
         pass
 
-    # Generic failsafe wrapper array mapping
-    teams = ["Team Alpha", "Team Beta", "Team Gamma", "Team Delta"]
+    # Safe Local Default Sandbox
+    if "Championship" in league_name or "Premier" in league_name:
+        teams = ['Arsenal', 'Aston Villa', 'Chelsea', 'Liverpool', 'Man City', 'Man United', 'Newcastle', 'Tottenham', 'Leeds', 'Leicester']
+    else:
+        teams = ['Real Madrid', 'Barcelona', 'Atletico Madrid', 'Real Sociedad', 'Villarreal', 'Real Betis', 'Sevilla', 'Valencia', 'Athletic Bilbao', 'Girona']
     d = []
-    for i in range(4):
-        for j in range(4):
+    for i in range(len(teams)):
+        for j in range(len(teams)):
             if i != j: d.append({'HomeTeam': teams[i], 'AwayTeam': teams[j], 'FTHG': 1, 'FTAG': 1, 'FTR': 'D'})
-    return pd.DataFrame(d), "Generic System Failsafe Layer"
-
+    return pd.DataFrame(d), "System Standby Failsafe Layer"
 
 # --- DYNAMIC TARGET LEAGUE UI CHOOSER SELECTION ---
 selected_league_label = st.selectbox("🌐 Select Target Football Tournament", list(LEAGUES_CONFIG.keys()))
@@ -173,7 +174,7 @@ try:
     with st.spinner(f"🔄 Establishing secure connection and downloading stats for {selected_league_label}..."):
         df, source_label = load_league_data_safely(selected_league_label, active_config)
         live_odds_book = fetch_live_market_odds(ODDS_API_KEY, active_config["odds_code"])
-    st.success(f"🟢 Synchronized: Using {source_label}")
+    st.success(f" f\"🟩 Synchronized: Using {source_label}\"")
 except Exception as e:
     df, source_label = generate_mock_league_data(selected_league_label), "Emergency Failsafe Offline Layer"
     live_odds_book = {}
@@ -196,11 +197,3 @@ if df is not None and not df.empty:
         home_at_home = df[df['HomeTeam'] == selected_home]
         away_at_away = df[df['AwayTeam'] == selected_away]
         
-        h_sc = float(home_at_home['FTHG'].mean()) if not home_at_home.empty else 1.5
-        h_co = float(home_at_home['FTAG'].mean()) if not home_at_home.empty else 1.0
-        a_sc = float(away_at_away['FTAG'].mean()) if not away_at_away.empty else 1.0
-        a_co = float(away_at_away['FTHG'].mean()) if not away_at_away.empty else 1.5
-        
-        st.sidebar.header("🛠️ Situational Modifiers Engine")
-        home_xg_mod = st.sidebar.slider(f"{selected_home} xG Multiplier", 0.5, 2.0, 1.0, 0.05)
-        away_xg_mod = st.sidebar.slider(f"{selected_away} xG Multiplier", 0.5, 2.0, 1.0, 0.05)
