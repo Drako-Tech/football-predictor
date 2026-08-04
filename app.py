@@ -1,93 +1,123 @@
 import streamlit as st
 import pandas as pd
 import requests
-import urllib3
 
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
+# Note: Keep your API tokens private in production using st.secrets!
 API_KEY = "6c79e2eacf0174c706c7b1cd8a0fb802"
 
+# 1. Define a structured dictionary mapping user-friendly names to Sportmonks IDs
+LEAGUE_MAP = {
+    "🏴󠁧󠁢󠁥󠁮󠁧󠁿 Premier League": 8,
+    "🇪🇸 La Liga": 501,
+    "🇩🇪 Bundesliga": 82,
+    "🇮🇹 Serie A": 384,
+    "🇫🇷 Ligue 1": 301
+}
+
 @st.cache_data(ttl=3600)
-def get_prediction_dashboard():
-    # Fetching the entire season's fixtures and results to calculate form
-    url = "https://football-data.org"
-    headers = { 
-        "X-Auth-Token": API_KEY,
-        "User-Agent": "Mozilla/5.0",
-        "Accept": "application/json"
+def get_sportmonks_predictions(league_id):
+    """
+    Fetches upcoming fixtures and pre-calculated model predictions filtered
+    by a specific league ID in a single data request.
+    """
+    url = "https://api.sportmonks.com/v3/football/fixtures"
+    
+    params = {
+        "api_token": API_KEY,
+        "include": "predictions;participants",
+        # Pass the league ID and filter for scheduled upcoming fixtures
+        "filters": f"leagueIds:{league_id};fixtureStatuses:SCHEDULED" 
     }
     
     try:
-        response = requests.get(url, headers=headers, verify=False)
+        response = requests.get(url, params=params, timeout=10)
         if response.status_code != 200:
+            st.error(f"Sportmonks API Error: Received status code {response.status_code}")
             return pd.DataFrame()
             
-        data = response.json()
-        matches = data.get('matches', [])
+        json_data = response.json()
+        fixtures = json_data.get('data', [])
         
-        # 1. Map out historical scores to calculate a 'Form Tracker'
-        team_historical_goals = {}
-        
-        # First loop: Catalog all played matches to find goals scored
-        for m in matches:
-            if m['status'] == 'FINISHED':
-                home = m['homeTeam']['name']
-                away = m['awayTeam']['name']
-                h_goals = m['score']['fullTime']['home']
-                a_goals = m['score']['fullTime']['away']
-                
-                if h_goals is not None and a_goals is not None:
-                    team_historical_goals.setdefault(home, []).append(h_goals)
-                    team_historical_goals.setdefault(away, []).append(a_goals)
-
-        # Helper function to get goals in last 5 games
-        def get_last_5_goals(team_name):
-            history = team_historical_goals.get(team_name, [])
-            return sum(history[-5:]) if history else 0
-
-        # 2. Second loop: Build the prediction dashboard for UPCOMING games
         prediction_rows = []
-        for m in matches:
-            if m['status'] in ['SCHEDULED', 'TIMED', 'LIVE']:
-                home_team = m['homeTeam']['name']
-                away_team = m['awayTeam']['name']
+        
+        for f in fixtures:
+            # Extract team names from the participants list
+            participants = f.get('participants', [])
+            home_team = "Unknown Home"
+            away_team = "Unknown Away"
+            
+            for p in participants:
+                meta = p.get('meta', {})
+                if meta.get('location') == 'home':
+                    home_team = p.get('name')
+                elif meta.get('location') == 'away':
+                    away_team = p.get('name')
+            
+            # Extract 1X2 Full-Time market probabilities (type_id 237)
+            predictions_list = f.get('predictions', [])
+            home_prob, draw_prob, away_prob = 0.0, 0.0, 0.0
+            
+            for pred in predictions_list:
+                if pred.get('type_id') == 237:
+                    developer_predictions = pred.get('predictions', {})
+                    home_prob = developer_predictions.get('home', 0.0)
+                    draw_prob = developer_predictions.get('draw', 0.0)
+                    away_prob = developer_predictions.get('away', 0.0)
+                    break
+            
+            # Formulate the deterministic layout prediction message
+            if home_prob > away_prob and home_prob > draw_prob:
+                verdict = f"🟢 Home Win ({home_prob:.1f}%)"
+            elif away_prob > home_prob and away_prob > draw_prob:
+                verdict = f"🔵 Away Win ({away_prob:.1f}%)"
+            elif draw_prob > 0.0:
+                verdict = f"🟡 Draw ({draw_prob:.1f}%)"
+            else:
+                verdict = "Data Sync Pending"
                 
-                # Dynamic statistical metrics calculated live
-                home_form = get_last_5_goals(home_team)
-                away_form = get_last_5_goals(away_team)
-                
-                # Math-driven prediction logic matching professional layouts
-                if home_form > (away_form + 3):
-                    pred = "Home Win (High Confidence)"
-                elif home_form > away_form:
-                    pred = "Home Win (Slight Edge)"
-                elif away_form > (home_form + 3):
-                    pred = "Away Win (High Confidence)"
-                elif away_form > home_form:
-                    pred = "Away Win (Slight Edge)"
-                else:
-                    pred = "Draw / Even Match"
-
-                prediction_rows.append({
-                    "Home Team": home_team,
-                    "Away Team": away_team,
-                    "Home Goals (Last 5)": home_form,
-                    "Away Goals (Last 5)": away_form,
-                    "Mathematical Prediction": pred
-                })
-                
+            prediction_rows.append({
+                "Home Team": home_team,
+                "Away Team": away_team,
+                "Home Win Prob %": home_prob,
+                "Draw Prob %": draw_prob,
+                "Away Win Prob %": away_prob,
+                "Model Verdict": verdict
+            })
+            
         return pd.DataFrame(prediction_rows)
         
     except Exception as e:
-        st.error(f"Error mirroring data layouts: {e}")
+        st.error(f"Failed to fetch data stream: {e}")
         return pd.DataFrame()
 
-# Render Dashboard Layout
+# --- Render Streamlit Dashboard Layout ---
+st.set_page_config(page_title="Football Predictor Hub", layout="wide")
 st.title("📊 Data-Driven Match Predictor Dashboard")
-df_predictions = get_prediction_dashboard()
+st.caption("Powered by Sportmonks Real-Time Analytics Pipeline")
 
-st.subheader("Extracted Data Preview & Live Statistical Trends")
+# 2. Add an elegant selector panel in the UI
+st.subheader("Filter Predictions by League")
+selected_league_name = st.selectbox(
+    "Choose a competition to scan:", 
+    options=list(LEAGUE_MAP.keys()), 
+    index=0
+)
+
+# 3. Dynamic payload fetching based on the chosen key
+target_id = LEAGUE_MAP[selected_league_name]
+df_predictions = get_sportmonks_predictions(target_id)
+
+st.subheader(f"Extracted Data Preview & Statistical Trends: {selected_league_name}")
+
 if not df_predictions.empty:
-    st.dataframe(df_predictions, use_container_width=True)
+    st.dataframe(
+        df_predictions, 
+        use_container_width=True,
+        column_config={
+            "Home Win Prob %": st.column_config.ProgressColumn("Home Win Probability", format="%.1f%%", min_value=0, max_value=100),
+            "Away Win Prob %": st.column_config.ProgressColumn("Away Win Probability", format="%.1f%%", min_value=0, max_value=100),
+            "Draw Prob %": st.column_config.ProgressColumn("Draw Probability", format="%.1f%%", min_value=0, max_value=100),
+        }
+    )
 else:
-    st.info("No active or upcoming Premier League fixtures available in this gameweek.")
+    st.info(f"No scheduled upcoming matches found for {selected_league_name} in this current window segment.")
