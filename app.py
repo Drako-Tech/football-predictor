@@ -27,7 +27,9 @@ def fetch_live_market_odds(api_key):
             away = match.get('away_team')
             bookmakers = match.get('bookmakers', [])
             if bookmakers:
-                markets = bookmakers[0].get('markets', [])
+                # Target the first available bookmaker from the list
+                bm = bookmakers[0]
+                markets = bm.get('markets', [])
                 if markets:
                     outcomes = markets[0].get('outcomes', [])
                     h_odds, d_odds, a_odds = 1.85, 3.40, 4.20
@@ -111,12 +113,17 @@ def load_safely_from_web():
     fallback_url = "https://football-data.co.uk"
     return pd.read_csv(fallback_url), "2024/2025 Season Archive Backup"
 
+# --- MAIN CONTROLLER PIPELINE ---
+df = None
 try:
-    with st.spinner("🔄 Synchronizing global analytics channels safely over the cloud..."):
+    with st.spinner("🔄 Synchronizing global data structures safely over the cloud..."):
         df, source_label = load_safely_from_web()
         live_odds_book = fetch_live_market_odds(ODDS_API_KEY)
-    st.success(f"🟢 Cloud Data Sync Active: Using {source_label}")
-    
+    st.success(f" 🟢 Cloud Data Sync Active: Using {source_label}")
+except Exception as e:
+    st.error(f"Failed to fetch live web data stream: {e}")
+
+if df is not None:
     required_cols = ["HomeTeam", "AwayTeam", "FTHG", "FTAG", "FTR", "HS", "AS", "HST", "AST"]
     if all(col in df.columns for col in required_cols):
         teams_list = sorted(df['HomeTeam'].dropna().unique().tolist())
@@ -172,12 +179,12 @@ try:
                 st.table(outcomes_df)
                 
                 max_idx = np.unravel_index(np.argmax(grid), grid.shape)
-                st.info(f"✨ **Most Likely Exact Scoreline**: {selected_home} {max_idx} - {max_idx} ({grid[max_idx]*100:.1f}% probability)")
+                st.info(f"✨ **Most Likely Exact Scoreline**: {selected_home} {max_idx[0]} - {max_idx[1]} ({grid[max_idx]*100:.1f}% probability)")
                 
                 under_2_5_mask = np.fromfunction(lambda i, j: (i + j) < 2.5, (max_goals, max_goals))
                 under_2_5_prob = float(np.sum(grid[under_2_5_mask]))
                 over_2_5_prob = (1.0 - under_2_5_prob) * 100
-                btts_no_prob = float(np.sum(grid[:, 0]) + np.sum(grid[0, :]) - grid)
+                btts_no_prob = float(np.sum(grid[:, 0]) + np.sum(grid[0, :]) - grid[0, 0])
                 btts_yes_prob = (1.0 - btts_no_prob) * 100
                 
                 st.subheader("🎲 Embedded Derivative Value Betting Parameters")
@@ -186,7 +193,3 @@ try:
                 b2.metric("Both Teams to Score (BTTS Yes)", f"{btts_yes_prob:.1f}%")
                 
                 st.subheader("🔢 Poisson Scoreline Distribution Matrix")
-                matrix_df = pd.DataFrame(grid * 100, columns=[f"Away {g}" for g in range(max_goals)], index=[f"Home {g}" for g in range(max_goals)])
-                st.dataframe(matrix_df, use_container_width=True)
-                
-                # --- INTEGRATED REAL-TIME VALUE BET TRACKER ---
