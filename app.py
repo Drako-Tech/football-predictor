@@ -2,18 +2,47 @@ import math
 import numpy as np
 import pandas as pd
 import streamlit as st
+import requests
 
 st.set_page_config(layout="wide", page_title="Live Elite Football Hub")
-st.title("⚽ Live Automated Football Analytics & Predictive Hub")
+st.title("⚽ Live Automated Football Analytics & Value Hub")
+
+# 🔴 API Key integrated natively into the source code pipeline
+ODDS_API_KEY = "6c79e2eacf0174c706c7b1cd8a0fb802"
 
 def poisson_prob(lmbda, k):
     if lmbda <= 0: return 0.0
     return (math.exp(-lmbda) * (lmbda**k)) / math.factorial(k)
 
+# --- Automated Live Market Odds Fetcher ---
+def fetch_live_market_odds(api_key):
+    if not api_key:
+        return {}
+    try:
+        url = f"https://the-odds-api.com{api_key}&regions=uk&markets=h2h&oddsFormat=decimal"
+        response = requests.get(url, timeout=10).json()
+        odds_dict = {}
+        for match in response:
+            home = match.get('home_team')
+            away = match.get('away_team')
+            bookmakers = match.get('bookmakers', [])
+            if bookmakers:
+                markets = bookmakers[0].get('markets', [])
+                if markets:
+                    outcomes = markets[0].get('outcomes', [])
+                    h_odds, d_odds, a_odds = 1.85, 3.40, 4.20
+                    for outcome in outcomes:
+                        if outcome['name'] == home: h_odds = float(outcome['price'])
+                        elif outcome['name'] == 'Draw': d_odds = float(outcome['price'])
+                        elif outcome['name'] == away: a_odds = float(outcome['price'])
+                    odds_dict[f"{home} vs {away}"] = (h_odds, d_odds, a_odds)
+        return odds_dict
+    except Exception:
+        return {}
+
 # --- Dynamic Automated Live League Table Engine ---
 def calculate_league_table(df, predict_home=None, predict_away=None, ph_goals=0, pa_goals=0):
     working_df = df.copy()
-    
     if predict_home and predict_away:
         new_row = pd.DataFrame([{
             'HomeTeam': predict_home, 'AwayTeam': predict_away,
@@ -70,19 +99,23 @@ def calculate_league_table(df, predict_home=None, predict_away=None, ph_goals=0,
     table.index += 1
     return table[['Team', 'Played', 'Won', 'Drawn', 'Lost', 'GF', 'GA', 'GD', 'Points', 'Form (Last 5)']]
 
-
-# --- LIVE AUTOMATED DATA SYNC OVER THE WEB ---
-# We point to the 2627 season folder for the 2026/2027 live Premier League dataset
-live_data_url = "https://football-data.co.uk"
-
-@st.cache_data(ttl=3600)  # Caches the data for 1 hour so the site loads incredibly fast
-def load_live_data(url):
-    return pd.read_csv(url)
+@st.cache_data(ttl=3600)
+def load_safely_from_web():
+    try:
+        current_season_url = "https://football-data.co.uk"
+        test_df = pd.read_csv(current_season_url, nrows=5)
+        if not test_df.empty and "HomeTeam" in test_df.columns:
+            return pd.read_csv(current_season_url), "2025/2026 Live Football Dataset"
+    except Exception:
+        pass
+    fallback_url = "https://football-data.co.uk"
+    return pd.read_csv(fallback_url), "2024/2025 Season Archive Backup"
 
 try:
-    with st.spinner("🔄 Establishing cloud connection and downloading live league stats..."):
-        df = load_live_data(live_data_url)
-    st.success("🟢 Live Cloud Data Synchronized Automatically!")
+    with st.spinner("🔄 Synchronizing global analytics channels safely over the cloud..."):
+        df, source_label = load_safely_from_web()
+        live_odds_book = fetch_live_market_odds(ODDS_API_KEY)
+    st.success(f"🟢 Cloud Data Sync Active: Using {source_label}")
     
     required_cols = ["HomeTeam", "AwayTeam", "FTHG", "FTAG", "FTR", "HS", "AS", "HST", "AST"]
     if all(col in df.columns for col in required_cols):
@@ -156,23 +189,4 @@ try:
                 matrix_df = pd.DataFrame(grid * 100, columns=[f"Away {g}" for g in range(max_goals)], index=[f"Home {g}" for g in range(max_goals)])
                 st.dataframe(matrix_df, use_container_width=True)
                 
-                st.session_state['ph_goals'] = int(max_idx)
-                st.session_state['pa_goals'] = int(max_idx)
-                st.session_state['p_home'] = selected_home
-                st.session_state['p_away'] = selected_away
-        
-        with tab2:
-            st.subheader("📋 Vectorized Real-Time League Rankings Table")
-            proj_toggle = st.toggle("🔮 Inject Active Match Predictive Scores into League Table Standings", value=False)
-            
-            if proj_toggle and 'p_home' in st.session_state:
-                st.info(f"⚡ Standings table is currently injecting your predicted scoreline simulation: **{st.session_state['p_home']} {st.session_state['ph_goals']} - {st.session_state['pa_goals']} {st.session_state['p_away']}**!")
-                current_table = calculate_league_table(df, st.session_state['p_home'], st.session_state['p_away'], st.session_state['ph_goals'], st.session_state['pa_goals'])
-            else:
-                current_table = calculate_league_table(df)
-                
-            st.dataframe(current_table, use_container_width=True, height=600)
-    else:
-        st.error("Error: Live CSV format structures changed on server endpoints.")
-except Exception as e:
-    st.error(f"Failed to fetch live web data stream: {e}")
+                # --- INTEGRATED REAL-TIME VALUE BET TRACKER ---
